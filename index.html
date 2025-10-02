@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>明日閱讀家長共讀打卡</title>
+<style>
+  body { font-family: Arial, sans-serif; margin:0; padding:0; background:#f9f9f9; }
+  header { background:#4CAF50; color:white; text-align:center; padding:1em; }
+  main { padding:1em; max-width:600px; margin:auto; }
+  label { display:block; margin-top:10px; }
+  input, select, textarea { width:100%; padding:8px; margin-top:5px; box-sizing:border-box; }
+  button { margin-top:15px; padding:10px 20px; background:#4CAF50; color:white; border:none; cursor:pointer; }
+  button:hover { background:#45a049; }
+  .popup { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%);
+           background:white; padding:20px; border:2px solid #4CAF50; box-shadow:0 0 10px rgba(0,0,0,0.2);
+           opacity:0; transition: opacity 0.5s ease; z-index:100; }
+  .popup.show { display:block; opacity:1; }
+  .admin-section { display:none; margin-top:20px; padding:10px; background:#fff; border:1px solid #ccc; }
+  table { width:100%; border-collapse: collapse; margin-top:10px; }
+  table, th, td { border:1px solid #ccc; }
+  th, td { padding:8px; text-align:left; }
+  @media(max-width:600px){ input, select, textarea { font-size:14px; } table { font-size:12px; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>明日閱讀家長共讀打卡系統</h1>
+</header>
+
+<main>
+  <h2>打卡表單</h2>
+  <form id="checkinForm">
+    <label for="class">班級</label>
+    <select id="class" required></select>
+
+    <label for="parent">家長姓名</label>
+    <select id="parent" required></select>
+
+    <label for="datetime">到校日期時間</label>
+    <input type="datetime-local" id="datetime" required>
+
+    <button type="submit">打卡</button>
+  </form>
+
+  <div class="popup" id="popup">已打卡</div>
+
+  <hr>
+  <h2>管理介面</h2>
+  <label for="adminPass" id="passLabel">管理密碼</label>
+  <input type="password" id="adminPass">
+  <button id="loginBtn">登入管理介面</button>
+
+  <div class="admin-section" id="adminSection">
+    <h3>匯入班級與家長</h3>
+    <textarea id="importData" rows="5" placeholder="格式：班級,家長姓名，每行一筆"></textarea>
+    <button id="importBtn">匯入</button>
+
+    <h3>打卡紀錄</h3>
+    <label for="searchInput">搜尋班級/家長：</label>
+    <input type="text" id="searchInput" placeholder="輸入班級或家長姓名">
+
+    <div style="overflow-x:auto;">
+      <table id="recordTable">
+        <thead>
+          <tr><th>班級</th><th>家長姓名</th><th>到校日期時間</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <button id="exportBtn">匯出 CSV</button>
+    <button id="clearBtn">清除紀錄</button>
+  </div>
+</main>
+
+<script>
+const PASSWORD = "admin123"; // 管理密碼
+let classes = [];
+let parents = [];
+
+// 載入資料
+function loadData(){
+  classes = JSON.parse(localStorage.getItem("classes") || "[]");
+  parents = JSON.parse(localStorage.getItem("parents") || "[]");
+  updateDropdown();
+  updateRecords();
+}
+
+// 更新下拉選單
+function updateDropdown(){
+  const classSelect = document.getElementById("class");
+  const parentSelect = document.getElementById("parent");
+  classSelect.innerHTML = "<option value=''>請選擇班級</option>";
+  parentSelect.innerHTML = "<option value=''>請選擇家長</option>";
+  classes.forEach(c => classSelect.innerHTML += `<option value="${c}">${c}</option>`);
+  parents.forEach(p => parentSelect.innerHTML += `<option value="${p}">${p}</option>`);
+}
+
+// 打卡功能
+document.getElementById("checkinForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  const cls = document.getElementById("class").value;
+  const parent = document.getElementById("parent").value;
+  const datetime = document.getElementById("datetime").value;
+  if(!cls || !parent || !datetime) return;
+  
+  let records = JSON.parse(localStorage.getItem("records") || "[]");
+  records.push({class: cls, parent: parent, datetime: datetime});
+  localStorage.setItem("records", JSON.stringify(records));
+  
+  const popup = document.getElementById("popup");
+  popup.classList.add("show");
+  setTimeout(()=>popup.classList.remove("show"),1500);
+  
+  document.getElementById("checkinForm").reset();
+  updateRecords();
+});
+
+// 管理登入
+document.getElementById("loginBtn").addEventListener("click", function(){
+  const pass = document.getElementById("adminPass").value;
+  if(pass === PASSWORD){
+    document.getElementById("passLabel").style.display = "none";
+    document.getElementById("adminPass").style.display = "none";
+    this.style.display = "none"; 
+    document.getElementById("adminSection").style.display = "block";
+    updateRecords();
+    alert("管理介面已開啟");
+  } else {
+    alert("密碼錯誤");
+  }
+});
+
+// 匯入班級與家長
+document.getElementById("importBtn").addEventListener("click", function(){
+  const lines = document.getElementById("importData").value.trim().split("\n");
+  lines.forEach(line => {
+    const [c,p] = line.split(",");
+    if(c && !classes.includes(c)) classes.push(c.trim());
+    if(p && !parents.includes(p)) parents.push(p.trim());
+  });
+  localStorage.setItem("classes", JSON.stringify(classes));
+  localStorage.setItem("parents", JSON.stringify(parents));
+  updateDropdown();
+  alert("匯入完成");
+});
+
+// 更新紀錄表
+function updateRecords(){
+  const tbody = document.querySelector("#recordTable tbody");
+  tbody.innerHTML="";
+  const records = JSON.parse(localStorage.getItem("records") || "[]");
+  records.forEach(r=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML=`<td>${r.class}</td><td>${r.parent}</td><td>${r.datetime}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// 搜尋功能
+document.getElementById("searchInput").addEventListener("input", function(){
+  const keyword = this.value.toLowerCase();
+  const tbody = document.querySelector("#recordTable tbody");
+  Array.from(tbody.rows).forEach(row => {
+    const className = row.cells[0].textContent.toLowerCase();
+    const parentName = row.cells[1].textContent.toLowerCase();
+    row.style.display = (className.includes(keyword) || parentName.includes(keyword)) ? "" : "none";
+  });
+});
+
+// 匯出 CSV，自動生成日期檔名
+document.getElementById("exportBtn").addEventListener("click", function(){
+  const records = JSON.parse(localStorage.getItem("records") || "[]");
+  if(records.length===0){ alert("沒有紀錄"); return;}
+  let csv = "班級,家長姓名,到校日期時間\n";
+  records.forEach(r=> csv+=`${r.class},${r.parent},${r.datetime}\n`);
+  
+  const blob = new Blob([csv], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth()+1).padStart(2,'0');
+  const dd = String(today.getDate()).padStart(2,'0');
+  const filename = `打卡紀錄_${yyyy}-${mm}-${dd}.csv`;
+  
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// 清除紀錄
+document.getElementById("clearBtn").addEventListener("click", function(){
+  if(confirm("確定要清除所有打卡紀錄嗎？")){
+    localStorage.removeItem("records");
+    updateRecords();
+  }
+});
+
+loadData();
+</script>
+</body>
+</html>
